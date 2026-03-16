@@ -24,7 +24,7 @@ public class ChatService {
             return pipelineService.handleCommand(message);
         }
 
-        return ollamaClient.generateReply(message);
+        return ollamaClient.generateReply(message);  // For non-pipeline messages, get AI-generated response
     }
 
     public String getPipelineStatus() {
