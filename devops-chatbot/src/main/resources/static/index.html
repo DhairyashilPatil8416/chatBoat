@@ -651,32 +651,56 @@
   let soundEnabled = true;
   const AHEAD = 0.08; // seconds – schedule buffer
 
+  // Prime audio on first real interaction to avoid browser autoplay blocking.
+  document.addEventListener('pointerdown', unlockAudio, { once: true });
+  document.addEventListener('keydown', unlockAudio, { once: true });
+
   // Call this SYNCHRONOUSLY inside any user-gesture handler.
   function unlockAudio() {
     try {
       if (!audioCtx)
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume(); // fire-and-forget is fine here
+      if (audioCtx.state === 'suspended') {
+        // Keep this fire-and-forget in gesture handlers.
+        audioCtx.resume();
+      }
     } catch (e) {}
   }
 
-  function playTone(freq, type, duration, gainVal, extraDelay) {
-    if (!soundEnabled || !audioCtx) return;
+  async function ensureAudioReady() {
     try {
-      const t0  = audioCtx.currentTime + AHEAD + (extraDelay || 0);
-      const t1  = t0 + (duration || 0.18);
-      const osc = audioCtx.createOscillator();
-      const vol = audioCtx.createGain();
-      osc.connect(vol);
-      vol.connect(audioCtx.destination);
-      osc.type = type || 'sine';
-      osc.frequency.setValueAtTime(freq, t0);
-      vol.gain.setValueAtTime(0.001, t0);
-      vol.gain.linearRampToValueAtTime(gainVal || 0.2, t0 + 0.015);
-      vol.gain.exponentialRampToValueAtTime(0.001, t1);
-      osc.start(t0);
-      osc.stop(t1 + 0.05);
-    } catch (e) {}
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      return audioCtx && audioCtx.state === 'running';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function playTone(freq, type, duration, gainVal, extraDelay) {
+    if (!soundEnabled) return;
+    ensureAudioReady().then(function(ready) {
+      if (!ready || !audioCtx) return;
+      try {
+        const t0  = audioCtx.currentTime + AHEAD + (extraDelay || 0);
+        const t1  = t0 + (duration || 0.18);
+        const osc = audioCtx.createOscillator();
+        const vol = audioCtx.createGain();
+        osc.connect(vol);
+        vol.connect(audioCtx.destination);
+        osc.type = type || 'sine';
+        osc.frequency.setValueAtTime(freq, t0);
+        vol.gain.setValueAtTime(0.001, t0);
+        vol.gain.linearRampToValueAtTime(gainVal || 0.2, t0 + 0.015);
+        vol.gain.exponentialRampToValueAtTime(0.001, t1);
+        osc.start(t0);
+        osc.stop(t1 + 0.05);
+      } catch (e) {}
+    });
   }
 
   // ✉️ Send – two soft clicks
@@ -692,21 +716,24 @@
 
   // 🚀 Deploy – rocket whoosh (frequency sweep)
   function soundDeploy() {
-    if (!soundEnabled || !audioCtx) return;
-    try {
-      const t0  = audioCtx.currentTime + AHEAD;
-      const osc = audioCtx.createOscillator();
-      const vol = audioCtx.createGain();
-      osc.connect(vol);
-      vol.connect(audioCtx.destination);
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(800, t0);
-      osc.frequency.exponentialRampToValueAtTime(150, t0 + 0.5);
-      vol.gain.setValueAtTime(0.22, t0);
-      vol.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
-      osc.start(t0);
-      osc.stop(t0 + 0.55);
-    } catch (e) {}
+    if (!soundEnabled) return;
+    ensureAudioReady().then(function(ready) {
+      if (!ready || !audioCtx) return;
+      try {
+        const t0  = audioCtx.currentTime + AHEAD;
+        const osc = audioCtx.createOscillator();
+        const vol = audioCtx.createGain();
+        osc.connect(vol);
+        vol.connect(audioCtx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, t0);
+        osc.frequency.exponentialRampToValueAtTime(150, t0 + 0.5);
+        vol.gain.setValueAtTime(0.22, t0);
+        vol.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+        osc.start(t0);
+        osc.stop(t0 + 0.55);
+      } catch (e) {}
+    });
   }
 
   // 📊 Status / success – cheerful ding ding ding
