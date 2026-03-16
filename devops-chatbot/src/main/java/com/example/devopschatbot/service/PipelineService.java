@@ -11,7 +11,7 @@ public class PipelineService {
         this.gitHubActionsService = gitHubActionsService;
     }
 
-    public String handleCommand(String command) {
+    public String handleCommand(String command) {  // Normalize command for easier matching
         String normalized = command.toLowerCase();
 
         if (normalized.contains("build")) {
