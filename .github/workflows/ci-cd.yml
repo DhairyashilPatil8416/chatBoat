@@ -5,6 +5,13 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
+  # Allows the chatbot to trigger real builds via GitHub API
+  workflow_dispatch:
+    inputs:
+      deploy_env:
+        description: 'Deployment target (blank = build only)'
+        required: false
+        default: ''
 
 jobs:
   # ──────────────────────────────────────────────

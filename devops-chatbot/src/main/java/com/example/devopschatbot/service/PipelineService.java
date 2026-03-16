@@ -5,17 +5,23 @@ import org.springframework.stereotype.Service;
 @Service
 public class PipelineService {
 
+    private final GitHubActionsService gitHubActionsService;
+
+    public PipelineService(GitHubActionsService gitHubActionsService) {
+        this.gitHubActionsService = gitHubActionsService;
+    }
+
     public String handleCommand(String command) {
         String normalized = command.toLowerCase();
 
         if (normalized.contains("build")) {
-            return "Build pipeline started";  
+            return gitHubActionsService.triggerBuild();
         }
         if (normalized.contains("deploy")) {
-            return "Deployment started on AWS";
+            return gitHubActionsService.triggerDeploy();
         }
         if (normalized.contains("status")) {
-            return "Build successful and deployed";
+            return gitHubActionsService.getLatestRunStatus();
         }
         if (normalized.contains("rollback")) {
             return "Pipeline: Rollback started to previous stable version.";

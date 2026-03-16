@@ -8,3 +8,12 @@ spring:
 ollama:
   base-url: http://localhost:11434
   model: llama3.2
+
+# GitHub Actions integration
+# Set GITHUB_TOKEN env var with a PAT (repo + workflow scopes).
+github:
+  token: ${GITHUB_TOKEN:}
+  owner: DhairyashilPatil8416
+  repo: chatBoat
+  workflow: ci-cd.yml
+  branch: main

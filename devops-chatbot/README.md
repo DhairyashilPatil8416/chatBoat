@@ -1,58 +1,94 @@
-# DevOps Chatbot (Spring Boot)
+# DevOps Chatbot (Simple Project)
 
-Small project using this flow:
-- controller/ChatController.java
-- service/ChatService.java
-- service/PipelineService.java
-- ai/OllamaClient.java
-- config/AppConfig.java
-- DevopsChatbotApplication.java
+This project is a simple Spring Boot chatbot with:
+- Chat UI at `http://localhost:8080`
+- DevOps commands: build, deploy, status, rollback
+- GitHub Actions integration for real pipeline triggers
+- Bot sound effects + voice (text-to-speech)
 
-## Run locally
+## 1) Quick Start
 
 Requirements:
 - Java 21
-- Maven 3.9+
-- Optional: Ollama running at http://localhost:11434
+- Internet access (for GitHub API and optional Ollama)
+- Optional: Ollama at `http://localhost:11434`
 
 Run:
 
 ```bash
-mvn spring-boot:run
+./mvnw spring-boot:run
 ```
 
-## API
+On Windows:
 
-Health check:
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+Open:
+- `http://localhost:8080`
+
+## 2) Simple Chat Commands
+
+Use these exact messages in the chatbot:
+
+- `build project`
+  - Bot: `Build pipeline started`
+- `deploy backend`
+  - Bot: `Deployment started on AWS`
+- `check pipeline status`
+  - Bot: `Build successful and deployed` (or current live status)
+
+## 3) Real GitHub Actions Setup
+
+To make this a real project (not only demo responses), configure:
+
+1. Create a GitHub Personal Access Token with:
+   - `repo`
+   - `workflow`
+2. Set environment variable:
+
+Windows PowerShell:
+
+```powershell
+$env:GITHUB_TOKEN="your_token_here"
+```
+
+3. Restart app.
+
+The backend uses these values from `application.yml`:
+- `github.owner`
+- `github.repo`
+- `github.workflow`
+- `github.branch`
+
+## 4) API Endpoints
+
+Health:
 
 ```bash
 curl http://localhost:8080/api/chat/health
 ```
 
-Chat request:
+Chat:
 
 ```bash
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
-  -d "{\"message\":\"deploy to staging\"}"
+  -d "{\"message\":\"build project\"}"
 ```
 
-Sample commands:
-- build
-- deploy
-- status
-- rollback
+## 5) CI/CD Workflow
 
-## CI/CD
+Workflow file:
+- `.github/workflows/ci-cd.yml`
 
-Pipeline file:
-- .github/workflows/ci-cd.yml
+It supports:
+- `push` and `pull_request`
+- `workflow_dispatch` (required for chatbot-triggered real builds)
 
-What it does:
-1. On push/PR to main and develop, run tests and package JAR.
-2. Upload JAR as artifact.
-3. On push to main, run sample deploy job.
+## 6) Notes
 
-## Git workflow
-
-See GIT_WORKFLOW.md for complete branch and release flow.
+- If `GITHUB_TOKEN` is missing, project runs in safe demo mode.
+- Frontend pipeline monitor reads latest GitHub Actions run and plays sounds.
+- Sound toggle controls both sound effects and speech.
