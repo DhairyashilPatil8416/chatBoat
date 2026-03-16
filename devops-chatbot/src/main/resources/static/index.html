@@ -381,10 +381,12 @@
       removeTyping();
       const reply = data.reply || 'No response received.';
       appendMessage('bot', reply);
-      playSoundForMessage(reply);         // 🔊 bot reply sound (based on content)
+      playSoundForMessage(reply);  // 🔊 sound
+      speak(reply);                // 🗣️ speech
     } catch (err) {
       removeTyping();
-      soundError();                       // 🔊 error buzz
+      soundError();
+      speak('Server unavailable. Please check the backend.');
       appendMessage('bot', '⚠️ Could not reach the server. Please make sure the backend is running.');
     } finally {
       sendBtn.disabled = false;
@@ -446,8 +448,9 @@
       const botBubble = appendDemoMessage('bot', '');
       await typeWriter(botBubble, step.bot, 35);
 
-      // Bot reply sound after text appears
+      // Bot reply sound + speech after text appears
       playSoundForMessage(step.bot);
+      speak(step.bot);
       await sleep(900);
     }
 
@@ -493,6 +496,35 @@
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ======================================================
+  // SPEECH ENGINE  (Web Speech API - no external files)
+  // ======================================================
+  let speechEnabled = true;
+
+  function speak(text) {
+    if (!speechEnabled) return;
+    if (!window.speechSynthesis) return;
+    // Strip HTML tags if any
+    const plain = text.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ').trim();
+    if (!plain) return;
+    // Cancel any ongoing speech before speaking the new message
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(plain);
+    utter.rate   = 1.05;  // slightly faster than default
+    utter.pitch  = 1.0;
+    utter.volume = 1.0;
+    // Prefer an English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const english = voices.find(v => v.lang.startsWith('en'));
+    if (english) utter.voice = english;
+    window.speechSynthesis.speak(utter);
+  }
+
+  // Load voices asynchronously (Chrome requires this)
+  if (window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = function() {};
+  }
 
   // ======================================================
   // GITHUB ACTIONS LIVE MONITOR
@@ -558,9 +590,9 @@
           '<span style="font-size:0.78rem;color:#484f58">\ud83d\udcdd ' + escapeHtml(commitMsg) + '</span><br/>' +
           '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View on GitHub</a>'
         );
-        if (run.status === 'in_progress')              soundBuild();
-        else if (run.conclusion === 'success')         soundSuccess();
-        else if (run.conclusion === 'failure')         soundError();
+        if (run.status === 'in_progress')              { soundBuild();   speak('Build and Test started on ' + branch); }
+        else if (run.conclusion === 'success')         { soundSuccess(); speak('Build successful and deployed'); }
+        else if (run.conclusion === 'failure')         { soundError();   speak('Pipeline failed on ' + branch); }
         lastRunKey = runKey;
         return;
       }
@@ -577,6 +609,7 @@
           '<span style="font-size:0.78rem;color:#484f58">\ud83d\udcdd ' + escapeHtml(commitMsg) + '</span>'
         );
         soundBuild();
+        speak('Build pipeline started on ' + branch);
       } else if (run.status === 'completed' && run.conclusion === 'success') {
         appendPipelineEvent(
           '\u2705 GitHub Actions <strong>pipeline PASSED</strong> on <code>' + branch + '</code><br/>' +
@@ -584,12 +617,14 @@
           '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View run</a>'
         );
         soundSuccess();
+        speak('Build successful and deployed');
       } else if (run.status === 'completed' && run.conclusion === 'failure') {
         appendPipelineEvent(
           '\u274c GitHub Actions <strong>pipeline FAILED</strong> on <code>' + branch + '</code><br/>' +
           '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View errors</a>'
         );
         soundError();
+        speak('Pipeline failed. Please check the errors on GitHub.');
       }
     } catch (e) {}
   }
@@ -709,10 +744,12 @@
   function toggleSound() {
     unlockAudio(); // must be synchronous inside click handler
     soundEnabled = !soundEnabled;
+    speechEnabled = soundEnabled; // speech follows the same mute toggle
     const btn = document.getElementById('soundToggle');
-    btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Muted';
+    btn.textContent = soundEnabled ? '\ud83d\udd0a Sound' : '\ud83d\udd07 Muted';
     btn.classList.toggle('muted', !soundEnabled);
-    showToast(soundEnabled ? 'Sound ON' : 'Sound OFF');
+    if (!soundEnabled) window.speechSynthesis && window.speechSynthesis.cancel();
+    showToast(soundEnabled ? 'Sound & Speech ON' : 'Sound & Speech OFF');
     if (soundEnabled) playTone(660, 'sine', 0.12, 0.15, 0);
   }
 
