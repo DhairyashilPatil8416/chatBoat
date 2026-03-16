@@ -1,14 +1,14 @@
 package com.example.devopschatbot.ai;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.HashMap;
-import java.util.Map;
 
 @Component
 public class OllamaClient {
@@ -38,7 +38,7 @@ public class OllamaClient {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
-            @SuppressWarnings("unchecked")
+            @SuppressWarnings("unchecked")  
             Map<String, Object> response = restTemplate.postForObject(url, request, Map.class);
 
             if (response != null && response.get("response") != null) {
