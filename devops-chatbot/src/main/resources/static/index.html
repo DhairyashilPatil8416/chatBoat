@@ -276,6 +276,7 @@
   <!-- Quick command chips -->
   <div class="quick-commands">
     <button class="quick-btn" onclick="runDemo()">🎥 Run Demo</button>
+    <button class="quick-btn" onclick="checkPipelineNow()">🔄 Check Pipeline</button>
     <button class="quick-btn" onclick="sendQuick('build project')">⚙️ build project</button>
     <button class="quick-btn" onclick="sendQuick('deploy backend')">🚀 deploy backend</button>
     <button class="quick-btn" onclick="sendQuick('check pipeline status')">📊 pipeline status</button>
@@ -493,8 +494,116 @@
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // ══════════════════════════════════════════════════════
-  // SOUND ENGINE  (Web Audio API – zero external files)
+  // ======================================================
+  // GITHUB ACTIONS LIVE MONITOR
+  // Polls the GitHub REST API every 45 s (safe within the
+  // 60 req/hr unauthenticated limit).  When the pipeline
+  // changes state it appends a message and plays a sound.
+  // ======================================================
+  const GH_REPO = 'DhairyashilPatil8416/chatBoat';
+  const GH_API  = 'https://api.github.com/repos/' + GH_REPO + '/actions/runs?per_page=1';
+  const POLL_MS = 45000;
+
+  let lastRunKey = null;
+
+  function appendPipelineEvent(html) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg bot';
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.style.background = '#1f3a5f';
+    avatar.textContent = '\u26a1';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.style.borderColor = '#1f6feb';
+    bubble.style.background  = 'rgba(31,111,235,0.08)';
+    bubble.innerHTML = html;
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(bubble);
+    messagesEl.appendChild(wrapper);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  async function checkGitHubPipeline(isManual) {
+    try {
+      const res = await fetch(GH_API, { headers: { Accept: 'application/vnd.github+json' } });
+      if (res.status === 403 || res.status === 429) {
+        if (isManual) appendPipelineEvent('\u26a0\ufe0f GitHub API rate limit reached. Try again in a minute.');
+        return;
+      }
+      if (!res.ok) {
+        if (isManual) appendPipelineEvent('\u26a0\ufe0f Could not reach GitHub API.');
+        return;
+      }
+      const data = await res.json();
+      const run  = data.workflow_runs && data.workflow_runs[0];
+      if (!run) {
+        if (isManual) appendPipelineEvent('\u2139\ufe0f No workflow runs found yet.');
+        return;
+      }
+      const runKey     = run.id + '-' + run.status + '-' + (run.conclusion || '');
+      const branch     = run.head_branch || 'main';
+      const commitMsg  = run.head_commit && run.head_commit.message
+                         ? run.head_commit.message.split('\n')[0].slice(0, 60) : '';
+      const actionsUrl = 'https://github.com/' + GH_REPO + '/actions/runs/' + run.id;
+
+      if (isManual) {
+        const icon = run.status === 'completed'
+          ? (run.conclusion === 'success' ? '\u2705' : run.conclusion === 'failure' ? '\u274c' : '\u26aa')
+          : (run.status === 'in_progress' ? '\u23f3' : '\ud83d\udd52');
+        appendPipelineEvent(
+          icon + ' <strong>Pipeline status</strong> on <code>' + branch + '</code><br/>' +
+          '<span style="font-size:0.8rem;color:#8b949e">' + run.status +
+            (run.conclusion ? ' &ndash; ' + run.conclusion : '') + '</span><br/>' +
+          '<span style="font-size:0.78rem;color:#484f58">\ud83d\udcdd ' + escapeHtml(commitMsg) + '</span><br/>' +
+          '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View on GitHub</a>'
+        );
+        if (run.status === 'in_progress')              soundBuild();
+        else if (run.conclusion === 'success')         soundSuccess();
+        else if (run.conclusion === 'failure')         soundError();
+        lastRunKey = runKey;
+        return;
+      }
+
+      if (lastRunKey === null) { lastRunKey = runKey; return; }
+      if (runKey === lastRunKey) return;
+      lastRunKey = runKey;
+
+      if (run.status === 'queued') {
+        appendPipelineEvent('\ud83d\udd52 GitHub Actions pipeline <strong>queued</strong> on <code>' + branch + '</code>');
+      } else if (run.status === 'in_progress') {
+        appendPipelineEvent(
+          '\u23f3 GitHub Actions <strong>Build &amp; Test started</strong> on <code>' + branch + '</code><br/>' +
+          '<span style="font-size:0.78rem;color:#484f58">\ud83d\udcdd ' + escapeHtml(commitMsg) + '</span>'
+        );
+        soundBuild();
+      } else if (run.status === 'completed' && run.conclusion === 'success') {
+        appendPipelineEvent(
+          '\u2705 GitHub Actions <strong>pipeline PASSED</strong> on <code>' + branch + '</code><br/>' +
+          '<span style="font-size:0.8rem;color:#2ea043">Build successful and deployed</span><br/>' +
+          '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View run</a>'
+        );
+        soundSuccess();
+      } else if (run.status === 'completed' && run.conclusion === 'failure') {
+        appendPipelineEvent(
+          '\u274c GitHub Actions <strong>pipeline FAILED</strong> on <code>' + branch + '</code><br/>' +
+          '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View errors</a>'
+        );
+        soundError();
+      }
+    } catch (e) {}
+  }
+
+  function checkPipelineNow() {
+    unlockAudio();
+    checkGitHubPipeline(true);
+  }
+
+  checkGitHubPipeline(false);
+  setInterval(function() { checkGitHubPipeline(false); }, POLL_MS);
+
+  // ======================================================
+  // SOUND ENGINE  (Web Audio API - zero external files)
   //
   // KEY RULE: browsers suspend AudioContext until a real
   // user gesture occurs.  unlockAudio() MUST be called
@@ -502,7 +611,7 @@
   // of every click/keydown handler that wants sound.
   // All tones are scheduled 80 ms ahead so the context
   // has time to transition to 'running' before they play.
-  // ══════════════════════════════════════════════════════
+  // ======================================================
   let audioCtx    = null;
   let soundEnabled = true;
   const AHEAD = 0.08; // seconds – schedule buffer
