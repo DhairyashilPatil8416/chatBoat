@@ -9,13 +9,13 @@ public class PipelineService {
         String normalized = command.toLowerCase();
 
         if (normalized.contains("build")) {
-            return "Pipeline: Build triggered successfully.";
+            return "Build pipeline started";
         }
         if (normalized.contains("deploy")) {
-            return "Pipeline: Deployment started to staging environment.";
+            return "Deployment started on AWS";
         }
         if (normalized.contains("status")) {
-            return "Pipeline: Latest run is SUCCESS. No active failures.";
+            return "Build successful and deployed";
         }
         if (normalized.contains("rollback")) {
             return "Pipeline: Rollback started to previous stable version.";

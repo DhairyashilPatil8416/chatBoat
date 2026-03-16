@@ -47,6 +47,6 @@ public class OllamaClient {
             return "AI service responded with an empty message.";
         } catch (Exception ex) {
             return "AI service is unavailable right now. You can still use pipeline commands: build, deploy, status, rollback.";
-        }
+        }  
     }
 }
