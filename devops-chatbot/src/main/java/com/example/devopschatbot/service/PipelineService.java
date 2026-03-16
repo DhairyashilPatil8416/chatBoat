@@ -9,7 +9,7 @@ public class PipelineService {
         String normalized = command.toLowerCase();
 
         if (normalized.contains("build")) {
-            return "Build pipeline started";
+            return "Build pipeline started";  
         }
         if (normalized.contains("deploy")) {
             return "Deployment started on AWS";
