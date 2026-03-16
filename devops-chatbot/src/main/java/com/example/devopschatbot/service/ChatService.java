@@ -1,7 +1,8 @@
 package com.example.devopschatbot.service;
 
-import com.example.devopschatbot.ai.OllamaClient;
 import org.springframework.stereotype.Service;
+
+import com.example.devopschatbot.ai.OllamaClient;
 
 @Service
 public class ChatService {
@@ -24,6 +25,10 @@ public class ChatService {
         }
 
         return ollamaClient.generateReply(message);
+    }
+
+    public String getPipelineStatus() {
+        return pipelineService.handleCommand("status");
     }
 
     private boolean isPipelineCommand(String message) {

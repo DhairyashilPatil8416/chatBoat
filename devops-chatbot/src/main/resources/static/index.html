@@ -527,16 +527,13 @@
   }
 
   // ======================================================
-  // GITHUB ACTIONS LIVE MONITOR
-  // Polls the GitHub REST API every 45 s (safe within the
-  // 60 req/hr unauthenticated limit).  When the pipeline
-  // changes state it appends a message and plays a sound.
+  // PIPELINE LIVE MONITOR (via backend)
+  // Polls server status every 20 s so UI can play sounds
+  // when status changes (build running, success, failure).
   // ======================================================
-  const GH_REPO = 'DhairyashilPatil8416/chatBoat';
-  const GH_API  = 'https://api.github.com/repos/' + GH_REPO + '/actions/runs?per_page=1';
-  const POLL_MS = 45000;
+  const POLL_MS = 20000;
 
-  let lastRunKey = null;
+  let lastPipelineStatus = null;
 
   function appendPipelineEvent(html) {
     const wrapper = document.createElement('div');
@@ -558,73 +555,53 @@
 
   async function checkGitHubPipeline(isManual) {
     try {
-      const res = await fetch(GH_API, { headers: { Accept: 'application/vnd.github+json' } });
-      if (res.status === 403 || res.status === 429) {
-        if (isManual) appendPipelineEvent('\u26a0\ufe0f GitHub API rate limit reached. Try again in a minute.');
-        return;
-      }
+      const res = await fetch('/api/chat/pipeline/status');
       if (!res.ok) {
-        if (isManual) appendPipelineEvent('\u26a0\ufe0f Could not reach GitHub API.');
+        if (isManual) appendPipelineEvent('\u26a0\ufe0f Could not read pipeline status from backend.');
         return;
       }
       const data = await res.json();
-      const run  = data.workflow_runs && data.workflow_runs[0];
-      if (!run) {
-        if (isManual) appendPipelineEvent('\u2139\ufe0f No workflow runs found yet.');
+      const status = (data && data.status ? String(data.status) : '').trim();
+      if (!status) {
+        if (isManual) appendPipelineEvent('\u2139\ufe0f No pipeline status available yet.');
         return;
       }
-      const runKey     = run.id + '-' + run.status + '-' + (run.conclusion || '');
-      const branch     = run.head_branch || 'main';
-      const commitMsg  = run.head_commit && run.head_commit.message
-                         ? run.head_commit.message.split('\n')[0].slice(0, 60) : '';
-      const actionsUrl = 'https://github.com/' + GH_REPO + '/actions/runs/' + run.id;
+      const normalized = status.toLowerCase();
 
       if (isManual) {
-        const icon = run.status === 'completed'
-          ? (run.conclusion === 'success' ? '\u2705' : run.conclusion === 'failure' ? '\u274c' : '\u26aa')
-          : (run.status === 'in_progress' ? '\u23f3' : '\ud83d\udd52');
-        appendPipelineEvent(
-          icon + ' <strong>Pipeline status</strong> on <code>' + branch + '</code><br/>' +
-          '<span style="font-size:0.8rem;color:#8b949e">' + run.status +
-            (run.conclusion ? ' &ndash; ' + run.conclusion : '') + '</span><br/>' +
-          '<span style="font-size:0.78rem;color:#484f58">\ud83d\udcdd ' + escapeHtml(commitMsg) + '</span><br/>' +
-          '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View on GitHub</a>'
-        );
-        if (run.status === 'in_progress')              { soundBuild();   speak('Build and Test started on ' + branch); }
-        else if (run.conclusion === 'success')         { soundSuccess(); speak('Build successful and deployed'); }
-        else if (run.conclusion === 'failure')         { soundError();   speak('Pipeline failed on ' + branch); }
-        lastRunKey = runKey;
+        appendPipelineEvent('<strong>Pipeline status</strong><br/><span style="font-size:0.8rem;color:#8b949e">' + escapeHtml(status) + '</span>');
+        if (normalized.includes('running') || normalized.includes('in progress')) {
+          soundBuild();
+          speak('Build and test started');
+        } else if (normalized.includes('successful') || normalized.includes('success') || normalized.includes('deployed')) {
+          soundSuccess();
+          speak('Build and test successful');
+        } else if (normalized.includes('failed') || normalized.includes('error')) {
+          soundError();
+          speak('Pipeline failed');
+        }
+        lastPipelineStatus = status;
         return;
       }
 
-      if (lastRunKey === null) { lastRunKey = runKey; return; }
-      if (runKey === lastRunKey) return;
-      lastRunKey = runKey;
+      if (lastPipelineStatus === null) { lastPipelineStatus = status; return; }
+      if (status === lastPipelineStatus) return;
+      lastPipelineStatus = status;
 
-      if (run.status === 'queued') {
-        appendPipelineEvent('\ud83d\udd52 GitHub Actions pipeline <strong>queued</strong> on <code>' + branch + '</code>');
-      } else if (run.status === 'in_progress') {
-        appendPipelineEvent(
-          '\u23f3 GitHub Actions <strong>Build &amp; Test started</strong> on <code>' + branch + '</code><br/>' +
-          '<span style="font-size:0.78rem;color:#484f58">\ud83d\udcdd ' + escapeHtml(commitMsg) + '</span>'
-        );
+      if (normalized.includes('queued')) {
+        appendPipelineEvent('\ud83d\udd52 Pipeline <strong>queued</strong>');
+      } else if (normalized.includes('running') || normalized.includes('in progress')) {
+        appendPipelineEvent('\u23f3 Pipeline <strong>Build &amp; Test started</strong>');
         soundBuild();
-        speak('Build pipeline started on ' + branch);
-      } else if (run.status === 'completed' && run.conclusion === 'success') {
-        appendPipelineEvent(
-          '\u2705 GitHub Actions <strong>pipeline PASSED</strong> on <code>' + branch + '</code><br/>' +
-          '<span style="font-size:0.8rem;color:#2ea043">Build successful and deployed</span><br/>' +
-          '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View run</a>'
-        );
+        speak('Build and test started');
+      } else if (normalized.includes('successful') || normalized.includes('success') || normalized.includes('deployed')) {
+        appendPipelineEvent('\u2705 Pipeline <strong>PASSED</strong><br/><span style="font-size:0.8rem;color:#2ea043">Build and test successful</span>');
         soundSuccess();
-        speak('Build successful and deployed');
-      } else if (run.status === 'completed' && run.conclusion === 'failure') {
-        appendPipelineEvent(
-          '\u274c GitHub Actions <strong>pipeline FAILED</strong> on <code>' + branch + '</code><br/>' +
-          '<a href="' + actionsUrl + '" target="_blank" style="font-size:0.75rem;color:#1f6feb">\ud83d\udd17 View errors</a>'
-        );
+        speak('Build and test successful');
+      } else if (normalized.includes('failed') || normalized.includes('error')) {
+        appendPipelineEvent('\u274c Pipeline <strong>FAILED</strong>');
         soundError();
-        speak('Pipeline failed. Please check the errors on GitHub.');
+        speak('Pipeline failed');
       }
     } catch (e) {}
   }

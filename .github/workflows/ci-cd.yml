@@ -2,9 +2,9 @@ name: CI/CD Pipeline – DevOps Chatbot
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "**" ]
   # Allows the chatbot to trigger real builds via GitHub API
   workflow_dispatch:
     inputs:
