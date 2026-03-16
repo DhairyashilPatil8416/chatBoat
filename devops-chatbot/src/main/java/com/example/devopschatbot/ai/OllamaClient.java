@@ -31,7 +31,7 @@ public class OllamaClient {
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("model", model);
-            payload.put("prompt", prompt);
+            payload.put("prompt", prompt);  // The prompt can be the user's message or a system instruction
             payload.put("stream", false);
 
             HttpHeaders headers = new HttpHeaders();

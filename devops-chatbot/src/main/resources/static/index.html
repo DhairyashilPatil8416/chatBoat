@@ -650,6 +650,7 @@
   let audioCtx    = null;
   let soundEnabled = true;
   const AHEAD = 0.08; // seconds – schedule buffer
+  let audioBlockToastAt = 0;
 
   // Prime audio on first real interaction to avoid browser autoplay blocking.
   document.addEventListener('pointerdown', unlockAudio, { once: true });
@@ -681,10 +682,20 @@
     }
   }
 
+  function notifyAudioBlocked() {
+    const now = Date.now();
+    if (now - audioBlockToastAt < 2500) return;
+    audioBlockToastAt = now;
+    showToast('Audio blocked by browser. Click 🔊 Sound once.');
+  }
+
   function playTone(freq, type, duration, gainVal, extraDelay) {
     if (!soundEnabled) return;
     ensureAudioReady().then(function(ready) {
-      if (!ready || !audioCtx) return;
+      if (!ready || !audioCtx) {
+        notifyAudioBlocked();
+        return;
+      }
       try {
         const t0  = audioCtx.currentTime + AHEAD + (extraDelay || 0);
         const t1  = t0 + (duration || 0.18);
@@ -718,7 +729,10 @@
   function soundDeploy() {
     if (!soundEnabled) return;
     ensureAudioReady().then(function(ready) {
-      if (!ready || !audioCtx) return;
+      if (!ready || !audioCtx) {
+        notifyAudioBlocked();
+        return;
+      }
       try {
         const t0  = audioCtx.currentTime + AHEAD;
         const osc = audioCtx.createOscillator();
@@ -768,7 +782,7 @@
   }
 
   // Sound toggle button
-  function toggleSound() {
+  async function toggleSound() {
     unlockAudio(); // must be synchronous inside click handler
     soundEnabled = !soundEnabled;
     speechEnabled = soundEnabled; // speech follows the same mute toggle
@@ -776,8 +790,17 @@
     btn.textContent = soundEnabled ? '\ud83d\udd0a Sound' : '\ud83d\udd07 Muted';
     btn.classList.toggle('muted', !soundEnabled);
     if (!soundEnabled) window.speechSynthesis && window.speechSynthesis.cancel();
-    showToast(soundEnabled ? 'Sound & Speech ON' : 'Sound & Speech OFF');
-    if (soundEnabled) playTone(660, 'sine', 0.12, 0.15, 0);
+    if (soundEnabled) {
+      const ready = await ensureAudioReady();
+      if (!ready) {
+        showToast('Sound ON, but browser still blocks audio. Click page and try again.');
+        return;
+      }
+      showToast('Sound & Speech ON');
+      playTone(660, 'sine', 0.12, 0.15, 0);
+      return;
+    }
+    showToast('Sound & Speech OFF');
   }
 
   // Toast notification
