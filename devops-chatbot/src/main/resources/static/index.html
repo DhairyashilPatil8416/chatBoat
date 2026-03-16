@@ -173,6 +173,46 @@
     #sendBtn:hover { background: #2ea043; }
     #sendBtn:active { transform: scale(0.94); }
     #sendBtn:disabled { background: #30363d; cursor: not-allowed; }
+
+    /* ── Sound toggle ── */
+    #soundToggle {
+      background: transparent;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      margin-left: auto;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    #soundToggle:hover { border-color: #2ea043; color: #2ea043; }
+    #soundToggle.muted { opacity: 0.45; }
+
+    /* ── Toast notification ── */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s, transform 0.3s;
+      z-index: 999;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
   </style>
 </head>
 <body>
@@ -187,6 +227,7 @@
       <p>AI-powered pipeline & deployment chatbot</p>
     </div>
     <div class="status-dot" title="Online"></div>
+    <button id="soundToggle" onclick="toggleSound()" title="Toggle sounds">🔊 Sound</button>
   </div>
 
   <!-- Messages -->
@@ -284,8 +325,16 @@
 
     inputEl.value = '';
     sendBtn.disabled = true;
+    soundSend();                          // 🔊 send click sound
     appendMessage('user', text);
     showTyping();
+
+    // Play command-specific sound immediately when user sends
+    const tl = text.toLowerCase();
+    if (tl.includes('build'))    soundBuild();
+    else if (tl.includes('deploy'))  soundDeploy();
+    else if (tl.includes('status'))  soundSuccess();
+    else if (tl.includes('rollback')) soundRollback();
 
     try {
       const res = await fetch('/api/chat', {
@@ -295,9 +344,12 @@
       });
       const data = await res.json();
       removeTyping();
-      appendMessage('bot', data.reply || 'No response received.');
+      const reply = data.reply || 'No response received.';
+      appendMessage('bot', reply);
+      playSoundForMessage(reply);         // 🔊 bot reply sound (based on content)
     } catch (err) {
       removeTyping();
+      soundError();                       // 🔊 error buzz
       appendMessage('bot', '⚠️ Could not reach the server. Please make sure the backend is running.');
     } finally {
       sendBtn.disabled = false;
@@ -311,6 +363,121 @@
   }
 
   inputEl.focus();
+
+  // ══════════════════════════════════════════════
+  // SOUND ENGINE  (Web Audio API – no file needed)
+  // ══════════════════════════════════════════════
+  let audioCtx = null;
+  let soundEnabled = true;
+
+  function getCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playTone({ freq = 440, type = 'sine', duration = 0.18, gain = 0.25, delay = 0 } = {}) {
+    if (!soundEnabled) return;
+    const ctx = getCtx();
+    const osc = ctx.createOscillator();
+    const vol = ctx.createGain();
+    osc.connect(vol);
+    vol.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+    vol.gain.setValueAtTime(0, ctx.currentTime + delay);
+    vol.gain.linearRampToValueAtTime(gain, ctx.currentTime + delay + 0.01);
+    vol.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+    osc.start(ctx.currentTime + delay);
+    osc.stop(ctx.currentTime + delay + duration + 0.05);
+  }
+
+  // 🚀 Send message — soft click (two quick tones)
+  function soundSend() {
+    playTone({ freq: 520, type: 'sine',   duration: 0.08, gain: 0.18, delay: 0    });
+    playTone({ freq: 660, type: 'sine',   duration: 0.08, gain: 0.18, delay: 0.07 });
+  }
+
+  // ⚙️ Build started — ascending mechanical blips
+  function soundBuild() {
+    [300, 420, 560, 700].forEach((f, i) =>
+      playTone({ freq: f, type: 'square', duration: 0.12, gain: 0.12, delay: i * 0.10 })
+    );
+  }
+
+  // ☁️ Deploy started — rocket whoosh (descending sweep)
+  function soundDeploy() {
+    const ctx = getCtx();
+    if (!soundEnabled) return;
+    const osc = ctx.createOscillator();
+    const vol = ctx.createGain();
+    osc.connect(vol);
+    vol.connect(ctx.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.5);
+    vol.gain.setValueAtTime(0.22, ctx.currentTime);
+    vol.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.55);
+  }
+
+  // 📊 Status / success — cheerful ding-ding-ding
+  function soundSuccess() {
+    [523, 659, 784].forEach((f, i) =>
+      playTone({ freq: f, type: 'sine', duration: 0.22, gain: 0.22, delay: i * 0.13 })
+    );
+  }
+
+  // ↩️ Rollback — low warning beeps
+  function soundRollback() {
+    [330, 262].forEach((f, i) =>
+      playTone({ freq: f, type: 'triangle', duration: 0.18, gain: 0.2, delay: i * 0.2 })
+    );
+  }
+
+  // ⚠️ Error — harsh buzz
+  function soundError() {
+    playTone({ freq: 180, type: 'sawtooth', duration: 0.3, gain: 0.25 });
+  }
+
+  // 🤖 Bot reply received — gentle pop
+  function soundBotReply() {
+    playTone({ freq: 880, type: 'sine', duration: 0.1, gain: 0.14 });
+  }
+
+  // Route sound based on message content
+  function playSoundForMessage(text) {
+    const t = text.toLowerCase();
+    if (t.includes('build'))    { soundBuild();   return; }
+    if (t.includes('deploy'))   { soundDeploy();  return; }
+    if (t.includes('status') || t.includes('success') || t.includes('successful')) {
+      soundSuccess(); return;
+    }
+    if (t.includes('rollback')) { soundRollback(); return; }
+    soundBotReply();
+  }
+
+  // Sound toggle
+  function toggleSound() {
+    soundEnabled = !soundEnabled;
+    const btn = document.getElementById('soundToggle');
+    btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Muted';
+    btn.classList.toggle('muted', !soundEnabled);
+    showToast(soundEnabled ? 'Sound ON' : 'Sound OFF');
+    if (soundEnabled) playTone({ freq: 660, type: 'sine', duration: 0.1, gain: 0.15 });
+  }
+
+  // Toast helper
+  let toastTimer;
+  function showToast(msg) {
+    let t = document.querySelector('.toast');
+    if (!t) { t = document.createElement('div'); t.className = 'toast'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
 </script>
 
 </body>
