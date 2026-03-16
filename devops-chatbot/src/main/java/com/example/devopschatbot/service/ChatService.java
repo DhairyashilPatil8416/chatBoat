@@ -31,7 +31,7 @@ public class ChatService {
         return pipelineService.handleCommand("status");
     }
 
-    private boolean isPipelineCommand(String message) {
+    private boolean isPipelineCommand(String message) {  
         String m = message.toLowerCase();
         return m.contains("build") || m.contains("deploy") || m.contains("status") || m.contains("rollback");
     }

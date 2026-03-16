@@ -355,6 +355,7 @@
 
   async function sendMessage() {
     unlockAudio();                        // FIRST: synchronously unlock AudioContext in this gesture
+    unlockSpeech();
     const text = inputEl.value.trim();
     if (!text) return;
 
@@ -396,6 +397,7 @@
 
   function sendQuick(text) {
     unlockAudio(); // synchronous – this IS a user gesture (button click)
+    unlockSpeech();
     inputEl.value = text;
     sendMessage();
   }
@@ -426,6 +428,7 @@
   async function runDemo() {
     if (demoRunning) return;
     unlockAudio();          // synchronous – inside click handler
+    unlockSpeech();
     demoRunning = true;
 
     for (const step of DEMO_SCRIPT) {
@@ -501,10 +504,25 @@
   // SPEECH ENGINE  (Web Speech API - no external files)
   // ======================================================
   let speechEnabled = true;
+  let speechUnlocked = false;
+
+  function unlockSpeech() {
+    if (speechUnlocked) return;
+    if (!window.speechSynthesis) return;
+    try {
+      const warmup = new SpeechSynthesisUtterance('.');
+      warmup.volume = 0;
+      warmup.rate = 1;
+      warmup.pitch = 1;
+      window.speechSynthesis.speak(warmup);
+      speechUnlocked = true;
+    } catch (e) {}
+  }
 
   function speak(text) {
     if (!speechEnabled) return;
     if (!window.speechSynthesis) return;
+    unlockSpeech();
     // Strip HTML tags if any
     const plain = text.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ').trim();
     if (!plain) return;
@@ -608,6 +626,7 @@
 
   function checkPipelineNow() {
     unlockAudio();
+    unlockSpeech();
     checkGitHubPipeline(true);
   }
 
@@ -630,8 +649,14 @@
   let audioBlockToastAt = 0;
 
   // Prime audio on first real interaction to avoid browser autoplay blocking.
-  document.addEventListener('pointerdown', unlockAudio, { once: true });
-  document.addEventListener('keydown', unlockAudio, { once: true });
+  document.addEventListener('pointerdown', function() {
+    unlockAudio();
+    unlockSpeech();
+  }, { once: true });
+  document.addEventListener('keydown', function() {
+    unlockAudio();
+    unlockSpeech();
+  }, { once: true });
 
   // Call this SYNCHRONOUSLY inside any user-gesture handler.
   function unlockAudio() {
@@ -761,6 +786,7 @@
   // Sound toggle button
   async function toggleSound() {
     unlockAudio(); // must be synchronous inside click handler
+    unlockSpeech();
     soundEnabled = !soundEnabled;
     speechEnabled = soundEnabled; // speech follows the same mute toggle
     const btn = document.getElementById('soundToggle');
