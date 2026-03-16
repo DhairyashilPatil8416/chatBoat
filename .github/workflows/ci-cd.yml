@@ -67,7 +67,19 @@ jobs:
         working-directory: devops-chatbot
         run: mvn clean package -DskipTests
 
+      - name: Check EC2 secrets are configured
+        id: check_secrets
+        run: |
+          if [ -z "${{ secrets.EC2_HOST }}" ] || [ -z "${{ secrets.EC2_USER }}" ] || [ -z "${{ secrets.EC2_SSH_KEY }}" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "⚠️  EC2 secrets not configured. Skipping deploy."
+            echo "   Add EC2_HOST, EC2_USER and EC2_SSH_KEY in repo Settings → Secrets → Actions."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy JAR to EC2 via SSH
+        if: steps.check_secrets.outputs.configured == 'true'
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -88,3 +100,7 @@ jobs:
             echo "Deployment successful. App running on port 8080."
           EOF
           rm -f key.pem
+
+      - name: Deploy skipped – secrets not set
+        if: steps.check_secrets.outputs.configured != 'true'
+        run: echo "Deploy skipped. Configure EC2 secrets to enable automatic deployment."

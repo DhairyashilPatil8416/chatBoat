@@ -320,20 +320,21 @@
   }
 
   async function sendMessage() {
+    unlockAudio();                        // FIRST: synchronously unlock AudioContext in this gesture
     const text = inputEl.value.trim();
     if (!text) return;
 
     inputEl.value = '';
     sendBtn.disabled = true;
-    soundSend();                          // 🔊 send click sound
+    soundSend();                          // 🔊 send click
     appendMessage('user', text);
     showTyping();
 
-    // Play command-specific sound immediately when user sends
+    // Play command-specific sound immediately
     const tl = text.toLowerCase();
-    if (tl.includes('build'))    soundBuild();
-    else if (tl.includes('deploy'))  soundDeploy();
-    else if (tl.includes('status'))  soundSuccess();
+    if (tl.includes('build'))         soundBuild();
+    else if (tl.includes('deploy'))   soundDeploy();
+    else if (tl.includes('status'))   soundSuccess();
     else if (tl.includes('rollback')) soundRollback();
 
     try {
@@ -358,125 +359,128 @@
   }
 
   function sendQuick(text) {
+    unlockAudio(); // synchronous – this IS a user gesture (button click)
     inputEl.value = text;
     sendMessage();
   }
 
   inputEl.focus();
 
-  // ══════════════════════════════════════════════
-  // SOUND ENGINE  (Web Audio API – no file needed)
-  // ══════════════════════════════════════════════
-  let audioCtx = null;
+  // ══════════════════════════════════════════════════════
+  // SOUND ENGINE  (Web Audio API – zero external files)
+  //
+  // KEY RULE: browsers suspend AudioContext until a real
+  // user gesture occurs.  unlockAudio() MUST be called
+  // synchronously (not inside a Promise/async) at the top
+  // of every click/keydown handler that wants sound.
+  // All tones are scheduled 80 ms ahead so the context
+  // has time to transition to 'running' before they play.
+  // ══════════════════════════════════════════════════════
+  let audioCtx    = null;
   let soundEnabled = true;
+  const AHEAD = 0.08; // seconds – schedule buffer
 
-  // Pre-unlock AudioContext on the very first user gesture.
-  // Browsers block audio until a real interaction has occurred.
-  document.addEventListener('click', async function unlockOnce() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
-    document.removeEventListener('click', unlockOnce);
-  }, { once: true });
-
-  async function getCtx() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
-    return audioCtx;
+  // Call this SYNCHRONOUSLY inside any user-gesture handler.
+  function unlockAudio() {
+    try {
+      if (!audioCtx)
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume(); // fire-and-forget is fine here
+    } catch (e) {}
   }
 
-  async function playTone({ freq = 440, type = 'sine', duration = 0.18, gain = 0.25, delay = 0 } = {}) {
-    if (!soundEnabled) return;
-    const ctx = await getCtx();                        // ← await the resume
-    const osc = ctx.createOscillator();
-    const vol = ctx.createGain();
-    osc.connect(vol);
-    vol.connect(ctx.destination);
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-    vol.gain.setValueAtTime(0, ctx.currentTime + delay);
-    vol.gain.linearRampToValueAtTime(gain, ctx.currentTime + delay + 0.01);
-    vol.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
-    osc.start(ctx.currentTime + delay);
-    osc.stop(ctx.currentTime + delay + duration + 0.05);
+  function playTone(freq, type, duration, gainVal, extraDelay) {
+    if (!soundEnabled || !audioCtx) return;
+    try {
+      const t0  = audioCtx.currentTime + AHEAD + (extraDelay || 0);
+      const t1  = t0 + (duration || 0.18);
+      const osc = audioCtx.createOscillator();
+      const vol = audioCtx.createGain();
+      osc.connect(vol);
+      vol.connect(audioCtx.destination);
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(freq, t0);
+      vol.gain.setValueAtTime(0.001, t0);
+      vol.gain.linearRampToValueAtTime(gainVal || 0.2, t0 + 0.015);
+      vol.gain.exponentialRampToValueAtTime(0.001, t1);
+      osc.start(t0);
+      osc.stop(t1 + 0.05);
+    } catch (e) {}
   }
 
-  // 🚀 Send message — soft click (two quick tones)
+  // ✉️ Send – two soft clicks
   function soundSend() {
-    playTone({ freq: 520, type: 'sine', duration: 0.08, gain: 0.18, delay: 0    });
-    playTone({ freq: 660, type: 'sine', duration: 0.08, gain: 0.18, delay: 0.07 });
+    playTone(520, 'sine', 0.08, 0.18, 0);
+    playTone(660, 'sine', 0.08, 0.18, 0.07);
   }
 
-  // ⚙️ Build started — ascending mechanical blips
+  // ⚙️ Build – ascending mechanical blips
   function soundBuild() {
-    [300, 420, 560, 700].forEach((f, i) =>
-      playTone({ freq: f, type: 'square', duration: 0.12, gain: 0.12, delay: i * 0.10 })
-    );
+    [300, 420, 560, 700].forEach((f, i) => playTone(f, 'square', 0.12, 0.12, i * 0.10));
   }
 
-  // ☁️ Deploy started — rocket whoosh (descending sweep)
-  async function soundDeploy() {
-    if (!soundEnabled) return;
-    const ctx = await getCtx();                        // ← await the resume
-    const osc = ctx.createOscillator();
-    const vol = ctx.createGain();
-    osc.connect(vol);
-    vol.connect(ctx.destination);
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(800, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.5);
-    vol.gain.setValueAtTime(0.22, ctx.currentTime);
-    vol.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.55);
+  // 🚀 Deploy – rocket whoosh (frequency sweep)
+  function soundDeploy() {
+    if (!soundEnabled || !audioCtx) return;
+    try {
+      const t0  = audioCtx.currentTime + AHEAD;
+      const osc = audioCtx.createOscillator();
+      const vol = audioCtx.createGain();
+      osc.connect(vol);
+      vol.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(800, t0);
+      osc.frequency.exponentialRampToValueAtTime(150, t0 + 0.5);
+      vol.gain.setValueAtTime(0.22, t0);
+      vol.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+      osc.start(t0);
+      osc.stop(t0 + 0.55);
+    } catch (e) {}
   }
 
-  // 📊 Status / success — cheerful ding-ding-ding
+  // 📊 Status / success – cheerful ding ding ding
   function soundSuccess() {
-    [523, 659, 784].forEach((f, i) =>
-      playTone({ freq: f, type: 'sine', duration: 0.22, gain: 0.22, delay: i * 0.13 })
-    );
+    [523, 659, 784].forEach((f, i) => playTone(f, 'sine', 0.22, 0.22, i * 0.13));
   }
 
-  // ↩️ Rollback — low warning beeps
+  // ↩️ Rollback – low warning beeps
   function soundRollback() {
-    [330, 262].forEach((f, i) =>
-      playTone({ freq: f, type: 'triangle', duration: 0.18, gain: 0.2, delay: i * 0.2 })
-    );
+    [330, 262].forEach((f, i) => playTone(f, 'triangle', 0.18, 0.2, i * 0.2));
   }
 
-  // ⚠️ Error — harsh buzz
+  // ⚠️ Error – harsh buzz
   function soundError() {
-    playTone({ freq: 180, type: 'sawtooth', duration: 0.3, gain: 0.25 });
+    playTone(180, 'sawtooth', 0.3, 0.25, 0);
   }
 
-  // 🤖 Bot reply received — gentle pop
+  // 🤖 Bot reply – gentle pop
   function soundBotReply() {
-    playTone({ freq: 880, type: 'sine', duration: 0.1, gain: 0.14 });
+    playTone(880, 'sine', 0.1, 0.14, 0);
   }
 
-  // Route sound based on bot reply content
+  // Route sound to matching function based on bot reply text
   function playSoundForMessage(text) {
     const t = text.toLowerCase();
-    if (t.includes('build'))    { soundBuild();   return; }
-    if (t.includes('deploy'))   { soundDeploy();  return; }
-    if (t.includes('status') || t.includes('success') || t.includes('successful')) {
-      soundSuccess(); return;
-    }
+    if (t.includes('build'))    { soundBuild();    return; }
+    if (t.includes('deploy'))   { soundDeploy();   return; }
+    if (t.includes('status') || t.includes('success') || t.includes('successful'))
+                                { soundSuccess();  return; }
     if (t.includes('rollback')) { soundRollback(); return; }
     soundBotReply();
   }
 
-  // Sound toggle
+  // Sound toggle button
   function toggleSound() {
+    unlockAudio(); // must be synchronous inside click handler
     soundEnabled = !soundEnabled;
     const btn = document.getElementById('soundToggle');
     btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Muted';
     btn.classList.toggle('muted', !soundEnabled);
     showToast(soundEnabled ? 'Sound ON' : 'Sound OFF');
-    if (soundEnabled) playTone({ freq: 660, type: 'sine', duration: 0.12, gain: 0.15 });
+    if (soundEnabled) playTone(660, 'sine', 0.12, 0.15, 0);
   }
 
-  // Toast helper
+  // Toast notification
   let toastTimer;
   function showToast(msg) {
     let t = document.querySelector('.toast');
