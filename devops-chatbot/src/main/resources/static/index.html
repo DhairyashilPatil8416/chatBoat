@@ -213,6 +213,35 @@
       opacity: 1;
       transform: translateX(-50%) translateY(0);
     }
+
+    /* ── Demo label on auto-played messages ── */
+    .demo-badge {
+      font-size: 0.65rem;
+      background: rgba(46,160,67,0.18);
+      color: #2ea043;
+      border: 1px solid rgba(46,160,67,0.35);
+      border-radius: 10px;
+      padding: 1px 7px;
+      margin-left: 8px;
+      vertical-align: middle;
+      letter-spacing: 0.03em;
+    }
+
+    /* ── Typewriter cursor blink ── */
+    .typing-cursor::after {
+      content: '|';
+      animation: blink-cur 0.7s step-end infinite;
+      color: #2ea043;
+      margin-left: 1px;
+    }
+    @keyframes blink-cur { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* ── Slide-in animation for demo messages ── */
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .msg { animation: slideIn 0.25s ease; }
   </style>
 </head>
 <body>
@@ -236,13 +265,17 @@
       <div class="avatar">🤖</div>
       <div class="bubble">
         👋 Hello! I'm your DevOps assistant.<br/>
-        Try commands like <strong>build project</strong>, <strong>deploy backend</strong>, or <strong>check pipeline status</strong>.
+        Try commands like <strong>build project</strong>, <strong>deploy backend</strong>, or <strong>check pipeline status</strong>.<br/>
+        <span style="font-size:0.78rem;color:#8b949e;margin-top:6px;display:block;">
+          ▶️ Click <strong>Run Demo</strong> to see a live example with sounds ↓
+        </span>
       </div>
     </div>
   </div>
 
   <!-- Quick command chips -->
   <div class="quick-commands">
+    <button class="quick-btn" onclick="runDemo()">🎥 Run Demo</button>
     <button class="quick-btn" onclick="sendQuick('build project')">⚙️ build project</button>
     <button class="quick-btn" onclick="sendQuick('deploy backend')">🚀 deploy backend</button>
     <button class="quick-btn" onclick="sendQuick('check pipeline status')">📊 pipeline status</button>
@@ -365,6 +398,100 @@
   }
 
   inputEl.focus();
+
+  // ══════════════════════════════════════════════════════
+  // AUTO DEMO — plays the two showcase conversations
+  // with typewriter effect and matching sounds.
+  // Triggered by "Run Demo" button (user gesture required
+  // so AudioContext can be unlocked first).
+  // ══════════════════════════════════════════════════════
+  const DEMO_SCRIPT = [
+    {
+      user:    'build project',
+      bot:     'Build pipeline started',
+      soundFn: () => soundBuild()
+    },
+    {
+      user:    'check pipeline status',
+      bot:     'Build successful and deployed',
+      soundFn: () => soundSuccess()
+    }
+  ];
+
+  let demoRunning = false;
+
+  async function runDemo() {
+    if (demoRunning) return;
+    unlockAudio();          // synchronous – inside click handler
+    demoRunning = true;
+
+    for (const step of DEMO_SCRIPT) {
+      // User bubble with typewriter
+      soundSend();
+      const userBubble = appendDemoMessage('user', '');
+      await typeWriter(userBubble, step.user, 45);
+      await sleep(300);
+
+      // Command-specific sound fires on "send"
+      step.soundFn();
+      await sleep(200);
+
+      // Typing indicator
+      showTyping();
+      await sleep(1200);
+      removeTyping();
+
+      // Bot bubble with typewriter
+      const botBubble = appendDemoMessage('bot', '');
+      await typeWriter(botBubble, step.bot, 35);
+
+      // Bot reply sound after text appears
+      playSoundForMessage(step.bot);
+      await sleep(900);
+    }
+
+    demoRunning = false;
+  }
+
+  // Create a demo bubble and return the bubble <div>
+  function appendDemoMessage(role, text) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `msg ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = role === 'user' ? '👤' : '🤖';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble typing-cursor';
+    if (text) bubble.textContent = text;
+
+    const badge = document.createElement('span');
+    badge.className = 'demo-badge';
+    badge.textContent = 'demo';
+
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(bubble);
+    bubble.appendChild(badge);
+    messagesEl.appendChild(wrapper);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return bubble;
+  }
+
+  // Type text character-by-character into a bubble element
+  async function typeWriter(bubbleEl, text, msPerChar) {
+    const badge = bubbleEl.querySelector('.demo-badge');
+    if (badge) badge.remove();
+    for (const ch of text) {
+      bubbleEl.insertAdjacentText('beforeend', ch);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      await sleep(msPerChar);
+    }
+    bubbleEl.classList.remove('typing-cursor');
+    if (badge) bubbleEl.appendChild(badge);
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
   // ══════════════════════════════════════════════════════
   // SOUND ENGINE  (Web Audio API – zero external files)
