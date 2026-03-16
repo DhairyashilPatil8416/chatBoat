@@ -13,6 +13,6 @@ class DevopsChatbotApplicationTests {
     RestTemplate restTemplate;
 
     @Test
-    void contextLoads() {
+    void contextLoads() { // Just verifies that the Spring context loads without issues 
     }
 }
